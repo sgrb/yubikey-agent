@@ -252,12 +252,24 @@ func (a *Agent) Signers() ([]ssh.Signer, error) {
 	return a.signers()
 }
 
-var slots = []piv.Slot{
+var baseSlots = []piv.Slot{
 	piv.SlotAuthentication,
 	piv.SlotCardAuthentication,
 	piv.SlotKeyManagement,
 	piv.SlotSignature,
 }
+
+var retiredSlots = func () []piv.Slot {
+  	var s, e uint32 = 0x82, 0x95
+	ct := e - s + 1
+	res := make([]piv.Slot, 0, ct)
+    for i := uint32(0); i < ct; i++ {
+		res = append(res, piv.Slot{s + i, 0x5FC10D + i})
+	}
+	return res
+}()
+
+var slots = append(baseSlots, retiredSlots...)
 
 func (a *Agent) signers() ([]ssh.Signer, error) {
 	var signers []ssh.Signer

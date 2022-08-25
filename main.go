@@ -16,6 +16,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+    "io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -42,7 +43,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "\t\tGenerate a new SSH key on the attached YubiKey.\n")
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "\tyubikey-agent -l PATH\n")
+		fmt.Fprintf(os.Stderr, "\tyubikey-agent -l PATH [-p pinfile]\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "\t\tRun the agent, listening on the UNIX socket at PATH.\n")
 		fmt.Fprintf(os.Stderr, "\n")
@@ -51,6 +52,7 @@ func main() {
 	socketPath := flag.String("l", "", "agent: path of the UNIX socket to listen on")
 	resetFlag := flag.Bool("really-delete-all-piv-keys", false, "setup: reset the PIV applet")
 	setupFlag := flag.Bool("setup", false, "setup: configure a new YubiKey")
+	pinPath := flag.String("p", "", "file with pin")
 	flag.Parse()
 
 	if flag.NArg() > 0 {
@@ -66,22 +68,32 @@ func main() {
 		}
 		runSetup(yk)
 	} else {
+        var pin string = ""
+        if *pinPath != "" {
+            bpin, err := ioutil.ReadFile(*pinPath)
+            if err != nil {
+                fmt.Fprintf(os.Stderr, "Failed to read pin from file: %v", err)
+                os.Exit(1)
+            }
+            pin = strings.TrimSpace(string(bpin))
+        }
+
 		if *socketPath == "" {
 			flag.Usage()
 			os.Exit(1)
 		}
-		runAgent(*socketPath)
+		runAgent(*socketPath, pin)
 	}
 }
 
-func runAgent(socketPath string) {
+func runAgent(socketPath string, pin string) {
 	if terminal.IsTerminal(int(os.Stdin.Fd())) {
 		log.Println("Warning: yubikey-agent is meant to run as a background daemon.")
 		log.Println("Running multiple instances is likely to lead to conflicts.")
 		log.Println("Consider using the launchd or systemd services.")
 	}
 
-	a := &Agent{}
+    a := &Agent{PIN: pin}
 
 	c := make(chan os.Signal)
 	signal.Notify(c, syscall.SIGHUP)
@@ -121,6 +133,7 @@ type Agent struct {
 	mu     sync.Mutex
 	yk     *piv.YubiKey
 	serial uint32
+    PIN    string
 
 	// touchNotification is armed by Sign to show a notification if waiting for
 	// more than a few seconds for the touch operation. It is paused and reset
@@ -281,7 +294,7 @@ func (a *Agent) signers() ([]ssh.Signer, error) {
 		priv, err := a.yk.PrivateKey(
 			slot,
 			pk.(ssh.CryptoPublicKey).CryptoPublicKey(),
-			piv.KeyAuth{PINPrompt: a.getPIN},
+            piv.KeyAuth{PIN: a.PIN, PINPrompt: a.getPIN},
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to prepare private key: %w", err)

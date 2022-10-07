@@ -180,6 +180,7 @@ type Agent struct {
 var _ agent.ExtendedAgent = &Agent{}
 
 func (a *Agent) serveConn(c net.Conn) {
+    defer a.Close()
 	if err := agent.ServeAgent(a, c); err != io.EOF {
 		log.Println("Agent client connection ended with error:", err)
 	}
@@ -234,7 +235,6 @@ func (a *Agent) Close() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.yk != nil {
-		log.Println("Received HUP, dropping YubiKey transaction...")
 		err := a.yk.Close()
 		a.yk = nil
 		return err

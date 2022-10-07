@@ -25,11 +25,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+    "strconv"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/go-piv/piv-go/piv"
+	"github.com/sgrb/piv-go/piv"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/terminal"
@@ -43,7 +44,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "\t\tGenerate a new SSH key on the attached YubiKey.\n")
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "\tyubikey-agent -l PATH [-p pinfile]\n")
+		fmt.Fprintf(os.Stderr, "\tyubikey-agent -l PATH [-p pinfile] [-s slot,slot,...]\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "\t\tRun the agent, listening on the UNIX socket at PATH.\n")
 		fmt.Fprintf(os.Stderr, "\n")
@@ -53,6 +54,7 @@ func main() {
 	resetFlag := flag.Bool("really-delete-all-piv-keys", false, "setup: reset the PIV applet")
 	setupFlag := flag.Bool("setup", false, "setup: configure a new YubiKey")
 	pinPath := flag.String("p", "", "file with pin")
+	slots := flag.String("s", "", "slots to use")
 	flag.Parse()
 
 	if flag.NArg() > 0 {
@@ -82,18 +84,40 @@ func main() {
 			flag.Usage()
 			os.Exit(1)
 		}
-		runAgent(*socketPath, pin)
+        
+        var slotsNums []uint32
+        if len(*slots) > 0 {
+            items := strings.Split(*slots, ",")
+            for _, i := range items {
+                s, err := strconv.ParseInt(i, 16, 32)
+                if (err != nil) {
+                    fmt.Fprintf(os.Stderr, "Bad slot %v: %v", i, err)
+                    os.Exit(1)
+                }
+                slotsNums = append(slotsNums, uint32(s))
+            }
+        }
+		runAgent(*socketPath, slotsNums, pin)
 	}
 }
 
-func runAgent(socketPath string, pin string) {
+func runAgent(socketPath string, slotsNum []uint32, pin string) {
 	if terminal.IsTerminal(int(os.Stdin.Fd())) {
 		log.Println("Warning: yubikey-agent is meant to run as a background daemon.")
 		log.Println("Running multiple instances is likely to lead to conflicts.")
 		log.Println("Consider using the launchd or systemd services.")
 	}
 
-    a := &Agent{PIN: pin}
+    var slots []piv.Slot
+    if len(slotsNum) > 0 {
+        for _, i := range slotsNum {
+            slots = append(slots, makeSlot(i))
+        }
+    } else {
+        slots = defaultSlots
+    }
+
+    a := &Agent{PIN: pin, slots: slots}
 
 	c := make(chan os.Signal)
 	signal.Notify(c, syscall.SIGHUP)
@@ -129,11 +153,23 @@ func runAgent(socketPath string, pin string) {
 	}
 }
 
+var defaultSlots = []piv.Slot{
+	piv.SlotAuthentication,
+	piv.SlotCardAuthentication,
+	piv.SlotKeyManagement,
+	piv.SlotSignature,
+}
+
+func makeSlot(num uint32) piv.Slot {
+    return piv.Slot{num, 0x5FC10D + (num - 0x82)}
+}
+
 type Agent struct {
 	mu     sync.Mutex
 	yk     *piv.YubiKey
 	serial uint32
     PIN    string
+    slots  []piv.Slot
 
 	// touchNotification is armed by Sign to show a notification if waiting for
 	// more than a few seconds for the touch operation. It is paused and reset
@@ -182,7 +218,9 @@ func (a *Agent) connectToYK() (*piv.YubiKey, error) {
 		return nil, errors.New("no YubiKey detected")
 	}
 	// TODO: support multiple YubiKeys.
-	yk, err := piv.Open(cards[0])
+    var client piv.Client
+    client.Shared = true
+	yk, err := client.Open(cards[0])
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +258,7 @@ func (a *Agent) List() ([]*agent.Key, error) {
 	}
 
 	var keys []*agent.Key
-	for _, slot := range slots {
+	for _, slot := range a.slots {
 		var pk ssh.PublicKey
 		var err error
 		pk, err = getPublicKey(a.yk, slot)
@@ -265,28 +303,9 @@ func (a *Agent) Signers() ([]ssh.Signer, error) {
 	return a.signers()
 }
 
-var baseSlots = []piv.Slot{
-	piv.SlotAuthentication,
-	piv.SlotCardAuthentication,
-	piv.SlotKeyManagement,
-	piv.SlotSignature,
-}
-
-var retiredSlots = func () []piv.Slot {
-  	var s, e uint32 = 0x82, 0x95
-	ct := e - s + 1
-	res := make([]piv.Slot, 0, ct)
-    for i := uint32(0); i < ct; i++ {
-		res = append(res, piv.Slot{s + i, 0x5FC10D + i})
-	}
-	return res
-}()
-
-var slots = append(baseSlots, retiredSlots...)
-
 func (a *Agent) signers() ([]ssh.Signer, error) {
 	var signers []ssh.Signer
-	for _, slot := range slots {
+	for _, slot := range a.slots {
 		pk, err := getPublicKey(a.yk, slot)
 		if err != nil {
 			continue

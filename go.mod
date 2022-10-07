@@ -9,4 +9,7 @@ require (
 	golang.org/x/term v0.0.0-20201210144234-2321bbc49cbf
 )
 
-require golang.org/x/sys v0.0.0-20210819135213-f52c844e1c1c // indirect
+require (
+	github.com/sgrb/piv-go v0.0.0-20221007172903-e742463e9dbe // indirect
+	golang.org/x/sys v0.0.0-20210819135213-f52c844e1c1c // indirect
+)

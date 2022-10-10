@@ -21,7 +21,7 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/go-piv/piv-go/piv"
+	"github.com/sgrb/piv-go/piv"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 )

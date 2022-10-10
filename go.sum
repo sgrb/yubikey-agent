@@ -1,5 +1,3 @@
-github.com/go-piv/piv-go v1.9.0 h1:P6j2gjfP7zO7T3nCk/jwCgsvFRwB8shEqAJ4q85jgXc=
-github.com/go-piv/piv-go v1.9.0/go.mod h1:NZ2zmjVkfFaL/CF8cVQ/pXdXtuj110zEKGdJM6fJZZM=
 github.com/sgrb/piv-go v0.0.0-20221007172903-e742463e9dbe h1:wjk+T8NufUuc3jUH7Z/ITxu8VQGqH8VAAIoPsFfx6ss=
 github.com/sgrb/piv-go v0.0.0-20221007172903-e742463e9dbe/go.mod h1:7VjqGZZJPeBPDsxcXKJDlfqYfFsE2ujGe0rLNKxRs1s=
 github.com/twpayne/go-pinentry-minimal v0.0.0-20220113210447-2a5dc4396c2a h1:a1bRrtgkiv0tytmDVXU5Dqse/WOTws7JvsY2WxPMZ6M=
